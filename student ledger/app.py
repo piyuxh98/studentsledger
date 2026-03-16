@@ -1,13 +1,17 @@
 import base64
 from pathlib import Path
 
-from flask import Flask, redirect, render_template_string, request, url_for
+from flask import Flask, redirect, render_template_string, request, session, url_for
 
 from automation import normalize_phone, sync_students_from_google_sheet
 from database import get_connection, init_db
 
 app = Flask(__name__)
+app.secret_key = "prepper-gurukul-admin-secret"
 init_db()
+
+ADMIN_USERNAME = "prepper gurukul admin"
+ADMIN_PASSWORD = "admin01"
 
 
 def load_brand_logo_src():
@@ -19,6 +23,154 @@ def load_brand_logo_src():
 
 
 BRAND_LOGO_SRC = load_brand_logo_src()
+
+LOGIN_TEMPLATE = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Preppers Gurukul Admin Login</title>
+    <style>
+        :root {
+            --paper: #f8f2e8;
+            --ink: #1e1b18;
+            --muted: #6b6258;
+            --brand: #8f2d1f;
+            --brand-deep: #5e1f16;
+            --gold: #cb9a43;
+            --line: rgba(61, 39, 24, 0.12);
+            --panel: rgba(255, 251, 245, 0.9);
+            --shadow: 0 20px 60px rgba(70, 43, 25, 0.14);
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            display: grid;
+            place-items: center;
+            padding: 20px;
+            font-family: Georgia, "Times New Roman", serif;
+            color: var(--ink);
+            background:
+                radial-gradient(circle at top left, rgba(203, 154, 67, 0.22), transparent 32%),
+                radial-gradient(circle at bottom right, rgba(143, 45, 31, 0.12), transparent 25%),
+                linear-gradient(180deg, #f7f0e4 0%, #f2e4ce 100%);
+        }
+
+        .card {
+            width: min(100%, 460px);
+            padding: 30px;
+            border: 1px solid var(--line);
+            border-radius: 28px;
+            background: var(--panel);
+            box-shadow: var(--shadow);
+        }
+
+        .brand-logo-wrap {
+            display: inline-flex;
+            align-items: center;
+            padding: 10px 14px 10px 6px;
+            border-radius: 20px;
+            background:
+                radial-gradient(circle at left center, rgba(248, 242, 232, 0.96), rgba(248, 242, 232, 0.88) 55%, rgba(248, 242, 232, 0.7));
+        }
+
+        .brand-logo {
+            width: min(320px, 72vw);
+            height: auto;
+            display: block;
+            object-fit: contain;
+            mix-blend-mode: multiply;
+            filter: contrast(1.08) brightness(0.96);
+        }
+
+        h1 {
+            margin: 18px 0 8px;
+            font-size: clamp(2rem, 5vw, 3rem);
+            line-height: 0.95;
+        }
+
+        p {
+            margin: 0 0 20px;
+            color: var(--muted);
+            line-height: 1.6;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 6px;
+            color: var(--brand-deep);
+            font-size: 0.84rem;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+        }
+
+        input {
+            width: 100%;
+            margin-bottom: 14px;
+            border: 1px solid rgba(76, 53, 36, 0.16);
+            border-radius: 16px;
+            background: rgba(255,255,255,0.9);
+            padding: 14px 15px;
+            color: var(--ink);
+            font: inherit;
+        }
+
+        input:focus {
+            outline: 2px solid rgba(203, 154, 67, 0.38);
+            border-color: rgba(143, 45, 31, 0.22);
+        }
+
+        button {
+            width: 100%;
+            border: none;
+            cursor: pointer;
+            border-radius: 999px;
+            padding: 13px 20px;
+            font: inherit;
+            font-weight: 700;
+            color: #fff7ef;
+            background: linear-gradient(135deg, var(--brand), var(--brand-deep));
+            box-shadow: 0 12px 24px rgba(94, 31, 22, 0.22);
+        }
+
+        .message {
+            padding: 14px 16px;
+            border-radius: 16px;
+            margin-bottom: 16px;
+            border: 1px solid var(--line);
+            background: #fff0ee;
+        }
+    </style>
+</head>
+<body>
+    <section class="card">
+        <div class="brand-logo-wrap">
+            <img class="brand-logo" src="{{ brand_logo_src }}" alt="Prepper Gurukul logo">
+        </div>
+        <h1>Admin Login</h1>
+        <p>Sign in to open the student dashboard and manage admissions, fees, and Google Sheet sync.</p>
+
+        {% if error %}
+        <div class="message">{{ error }}</div>
+        {% endif %}
+
+        <form action="/login" method="post">
+            <label for="username">Username</label>
+            <input id="username" name="username" type="text" autocomplete="username" required>
+
+            <label for="password">Password</label>
+            <input id="password" name="password" type="password" autocomplete="current-password" required>
+
+            <button type="submit">Enter Dashboard</button>
+        </form>
+    </section>
+</body>
+</html>
+"""
 
 DASHBOARD_TEMPLATE = """
 <!DOCTYPE html>
@@ -156,6 +308,12 @@ DASHBOARD_TEMPLATE = """
             margin-bottom: 16px;
             color: var(--ink);
             line-height: 1.5;
+        }
+
+        .hero-actions {
+            display: flex;
+            justify-content: flex-end;
+            margin-top: 16px;
         }
 
         .stats {
@@ -431,6 +589,12 @@ DASHBOARD_TEMPLATE = """
                     <span class="stat-value">Rs. {{ "%.0f"|format(stats.total_due) }}</span>
                 </div>
             </div>
+
+            <div class="hero-actions">
+                <form action="/logout" method="post">
+                    <button class="ghost" type="submit">Logout</button>
+                </form>
+            </div>
         </section>
 
         <div class="layout">
@@ -574,8 +738,54 @@ def to_float(value):
         return 0.0
 
 
+def is_logged_in():
+    return session.get("admin_logged_in", False)
+
+
+def require_login():
+    if not is_logged_in():
+        return redirect(url_for("login", error="Please log in to continue."))
+    return None
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if request.method == "POST":
+        username = request.form.get("username", "").strip().lower()
+        password = request.form.get("password", "")
+
+        if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
+            session["admin_logged_in"] = True
+            return redirect(url_for("dashboard"))
+
+        return render_template_string(
+            LOGIN_TEMPLATE,
+            brand_logo_src=BRAND_LOGO_SRC,
+            error="Invalid username or password.",
+        )
+
+    if is_logged_in():
+        return redirect(url_for("dashboard"))
+
+    return render_template_string(
+        LOGIN_TEMPLATE,
+        brand_logo_src=BRAND_LOGO_SRC,
+        error=request.args.get("error", ""),
+    )
+
+
+@app.route("/logout", methods=["POST"])
+def logout():
+    session.clear()
+    return redirect(url_for("login"))
+
+
 @app.route("/")
 def dashboard():
+    login_redirect = require_login()
+    if login_redirect:
+        return login_redirect
+
     conn = get_db()
     cursor = conn.cursor()
     edit_student = None
@@ -626,6 +836,10 @@ def dashboard():
 
 @app.route("/add", methods=["POST"])
 def add_student():
+    login_redirect = require_login()
+    if login_redirect:
+        return login_redirect
+
     name = request.form.get("name", "").strip()
     admission_date = request.form.get("admission_date", "").strip()
     phone = normalize_phone(request.form.get("phone", ""))
@@ -658,6 +872,10 @@ def add_student():
 
 @app.route("/update/<int:student_id>", methods=["POST"])
 def update_student(student_id):
+    login_redirect = require_login()
+    if login_redirect:
+        return login_redirect
+
     name = request.form.get("name", "").strip()
     admission_date = request.form.get("admission_date", "").strip()
     phone = normalize_phone(request.form.get("phone", ""))
@@ -686,6 +904,10 @@ def update_student(student_id):
 
 @app.route("/sync-sheet", methods=["POST"])
 def sync_sheet():
+    login_redirect = require_login()
+    if login_redirect:
+        return login_redirect
+
     result = sync_students_from_google_sheet()
     if result["ok"]:
         return redirect(url_for("dashboard", message=result["message"]))
@@ -694,6 +916,10 @@ def sync_sheet():
 
 @app.route("/delete/<int:student_id>", methods=["POST"])
 def delete_student(student_id):
+    login_redirect = require_login()
+    if login_redirect:
+        return login_redirect
+
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute("DELETE FROM students WHERE id = ?", (student_id,))
@@ -708,6 +934,10 @@ def delete_student(student_id):
 
 @app.route("/clear", methods=["POST"])
 def clear_students():
+    login_redirect = require_login()
+    if login_redirect:
+        return login_redirect
+
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute("DELETE FROM students")

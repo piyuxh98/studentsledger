@@ -49,6 +49,17 @@ Open:
 http://127.0.0.1:5000
 ```
 
+## Dashboard Login
+
+The dashboard now opens behind an admin login.
+
+Use these credentials:
+
+```text
+username: prepper gurukul admin
+password: admin01
+```
+
 ## Sync Sheet Manually
 
 You can sync in either of these ways:
